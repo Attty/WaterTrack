@@ -45,11 +45,7 @@ android {
 
 dependencies {
 
-
-    //Room
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     implementation("androidx.compose.material:material-icons-extended-android:1.7.2")
 
@@ -60,7 +56,7 @@ dependencies {
     val nav_version = "2.8.9"
     implementation("androidx.navigation:navigation-compose:$nav_version")
     implementation(libs.kotlinx.serialization.json)
-
+    implementation("androidx.compose.foundation:foundation:1.6.7") // Або новіша версія Compose Foundation
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)

@@ -2,34 +2,66 @@ package com.example.watertrack
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.watertrack.data.WaterDataRepository
+import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 @Composable
 fun HomeScreen(modifier: Modifier = Modifier) {
     val goal = 2000
-    var currentProgress by remember {
-        mutableStateOf(0f)
+    var currentProgress by rememberSaveable { mutableFloatStateOf(0f) }
+
+    val context = LocalContext.current
+    val waterRepository = remember { WaterDataRepository(context) }
+    val today = LocalDate.now()
+
+
+    var isInitialLoadDone by rememberSaveable { mutableStateOf(false) }
+
+    val P_loadedProgressFromDataStore by waterRepository.getWaterIntake(today).collectAsState(initial = -1f)
+
+
+    LaunchedEffect(P_loadedProgressFromDataStore, isInitialLoadDone) {
+        if (P_loadedProgressFromDataStore != -1f) {
+            if (!isInitialLoadDone) {
+                currentProgress = P_loadedProgressFromDataStore
+                isInitialLoadDone = true
+            }
+        }
+    }
+
+    val coroutineScope = rememberCoroutineScope()
+
+    val updateAndSaveProgress = { newAmount: Float ->
+        val validAmount = newAmount.coerceAtLeast(0f)
+        currentProgress = validAmount
+        if (isInitialLoadDone) {
+            coroutineScope.launch {
+                waterRepository.saveWaterIntake(today, validAmount)
+            }
+        }
     }
 
     Column(
@@ -47,14 +79,13 @@ fun HomeScreen(modifier: Modifier = Modifier) {
             Text(
                 "Today's progress",
                 color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.displayMedium // Use typography styles
+                style = MaterialTheme.typography.displayMedium
             )
             Text(
                 "${currentProgress.toInt()}ml / ${goal}ml",
                 style = MaterialTheme.typography.displaySmall
             )
 
-            // Show overachievement message when reaching or exceeding the goal
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -72,7 +103,6 @@ fun HomeScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        // Water level indicator with properly drawn border
         FillingCircleWithBorder(
             modifier = Modifier
                 .fillMaxWidth(0.75f)
@@ -90,7 +120,6 @@ fun HomeScreen(modifier: Modifier = Modifier) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Water intake buttons section
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -103,42 +132,35 @@ fun HomeScreen(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.titleMedium
             )
 
-            // Row of add buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 WaterButton(
                     text = "+100ml",
-                    onClick = { currentProgress += 100f }
+                    onClick = { updateAndSaveProgress(currentProgress + 100f) }
                 )
-
                 WaterButton(
                     text = "+250ml",
-                    onClick = { currentProgress += 250f }
+                    onClick = { updateAndSaveProgress(currentProgress + 250f) }
                 )
-
                 WaterButton(
                     text = "+500ml",
-                    onClick = { currentProgress += 500f }
+                    onClick = { updateAndSaveProgress(currentProgress + 500f) }
                 )
             }
 
-            // Second row with custom button and remove water option
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 WaterButton(
                     text = "Full Cup\n(330ml)",
-                    onClick = { currentProgress += 330f },
-
+                    onClick = { updateAndSaveProgress(currentProgress + 330f) }
                 )
-
-                // Remove water button with different color
                 WaterButton(
                     text = "-100ml",
-                    onClick = { currentProgress = (currentProgress - 100f).coerceAtLeast(0f) },
+                    onClick = { updateAndSaveProgress(currentProgress - 100f) },
                     containerColor = MaterialTheme.colorScheme.errorContainer,
                     contentColor = MaterialTheme.colorScheme.onErrorContainer
                 )
@@ -155,7 +177,7 @@ fun WaterButton(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
     contentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-    height: Dp = 50.dp // Added height parameter with default value
+    height: Dp = 50.dp
 ) {
     Button(
         onClick = onClick,
@@ -165,7 +187,7 @@ fun WaterButton(
             contentColor = contentColor
         ),
         modifier = modifier
-            .height(height) // Use the provided height parameter
+            .height(height)
             .width(110.dp)
     ) {
         Text(
@@ -177,7 +199,6 @@ fun WaterButton(
     }
 }
 
-// Update FillingCircleWithBorder to use typography styles
 @Composable
 fun FillingCircleWithBorder(
     progress: Float,
@@ -191,7 +212,7 @@ fun FillingCircleWithBorder(
     textColor: Color,
     icon: Int = R.drawable.droplet
 ) {
-    val animatedProgress by animateFloatAsState(targetValue = progress)
+    val animatedProgress by animateFloatAsState(targetValue = progress, label = "progressAnimation")
     val goalReached = currentProgress >= dailyGoal
 
     val circleBorderColor = if (goalReached) exceededGoalColor else borderColor
@@ -203,34 +224,33 @@ fun FillingCircleWithBorder(
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            // Canvas code remains the same
-            val size = size.minDimension
+            val sizeDimension = size.minDimension
             val borderWidth = 8f
-            val radius = (size / 2f) - (borderWidth / 2f)
-            val center = Offset(this.size.width / 2f, this.size.height / 2f)
-            val fillHeight = 2 * radius * animatedProgress
+            val radius = (sizeDimension / 2f) - (borderWidth / 2f)
+            val canvasCenter = Offset(this.size.width / 2f, this.size.height / 2f)
+            val fillHeightValue = 2 * radius * animatedProgress
             val circlePath = Path().apply {
-                addOval(Rect(center = center, radius = radius))
+                addOval(Rect(center = canvasCenter, radius = radius))
             }
 
             drawCircle(
                 color = backgroundColor,
                 radius = radius,
-                center = center
+                center = canvasCenter
             )
 
             clipPath(circlePath) {
                 drawRect(
                     color = circleFillColor,
-                    topLeft = Offset(center.x - radius, center.y + radius - fillHeight),
-                    size = Size(width = 2 * radius, height = fillHeight)
+                    topLeft = Offset(canvasCenter.x - radius, canvasCenter.y + radius - fillHeightValue),
+                    size = Size(width = 2 * radius, height = fillHeightValue)
                 )
             }
 
             drawCircle(
                 color = circleBorderColor,
                 radius = radius,
-                center = center,
+                center = canvasCenter,
                 style = Stroke(width = borderWidth, cap = StrokeCap.Round)
             )
         }
@@ -250,7 +270,7 @@ fun FillingCircleWithBorder(
             Text(
                 text = if (goalReached) "AMAZING!" else "${(animatedProgress * 100).toInt()}%",
                 color = circleTextColor,
-                style = if (goalReached) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleLarge
+                style = MaterialTheme.typography.titleLarge
             )
 
             Box(
